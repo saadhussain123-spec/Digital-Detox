@@ -1,0 +1,86 @@
+name: Build Digital Detox APK
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    name: Build Digital Detox APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Extract Android project ZIP and locate Gradle project
+        id: project
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          WORK_DIR="$RUNNER_TEMP/digital-detox-source"
+          mkdir -p "$WORK_DIR"
+
+          # If the Android project is not already at repository root,
+          # extract the uploaded project ZIP from the repository.
+          if [ ! -f "settings.gradle.kts" ] && [ ! -f "settings.gradle" ]; then
+            ZIP_FILE="$(find . -maxdepth 2 -type f -iname '*.zip' -print -quit || true)"
+            if [ -z "$ZIP_FILE" ]; then
+              echo "ERROR: No Gradle settings file and no project ZIP found."
+              echo "Upload the complete Digital Detox project ZIP to the repository, or extract its contents into the repository."
+              echo "Current repository files:"
+              find . -maxdepth 4 -type f | sort | head -250
+              exit 1
+            fi
+
+            echo "Extracting project archive: $ZIP_FILE"
+            unzip -q "$ZIP_FILE" -d "$WORK_DIR"
+            SEARCH_ROOT="$WORK_DIR"
+          else
+            SEARCH_ROOT="$GITHUB_WORKSPACE"
+          fi
+
+          SETTINGS_FILE="$(find "$SEARCH_ROOT" -type f \\( -name settings.gradle.kts -o -name settings.gradle \\) -not -path '*/.gradle/*' -print -quit || true)"
+          if [ -z "$SETTINGS_FILE" ]; then
+            echo "ERROR: The ZIP does not contain settings.gradle.kts or settings.gradle."
+            echo "Extracted files:"
+            find "$SEARCH_ROOT" -maxdepth 5 -type f | sort | head -250
+            exit 1
+          fi
+
+          PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
+          if [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ] && [ ! -f "$PROJECT_DIR/app/build.gradle" ]; then
+            echo "ERROR: Found Gradle settings, but no app/build.gradle(.kts) in $PROJECT_DIR"
+            find "$PROJECT_DIR" -maxdepth 4 -type f | sort | head -250
+            exit 1
+          fi
+
+          echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Android project found at: $PROJECT_DIR"
+          ls -la "$PROJECT_DIR"
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v4
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      - name: Build debug APK
+        run: gradle --no-daemon -p "${{ steps.project.outputs.project_dir }}" assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: DigitalDetox-debug-apk
+          path: ${{ steps.project.outputs.project_dir }}/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 14
