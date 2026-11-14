@@ -35,10 +35,11 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          ZIP_FILE="DigitalDetox-2.2-Context-Fix.zip"
+          ZIP_FILE="DigitalDetox-2.3-ScrollView-Fix.zip"
 
           if [ ! -f "$ZIP_FILE" ]; then
             echo "::error::Required project ZIP not found."
+            echo "ZIP files found:"
             find . -maxdepth 3 -type f -iname '*.zip' -print
             exit 1
           fi
@@ -52,6 +53,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+
           SETTINGS_FILE="$(find android-project -type f \( -name settings.gradle -o -name settings.gradle.kts \) -print -quit)"
 
           if [ -z "$SETTINGS_FILE" ]; then
@@ -61,22 +63,23 @@ jobs:
 
           PROJECT_DIR="$(dirname "$SETTINGS_FILE")"
 
-          test -d "$PROJECT_DIR/app" || {
+          if [ ! -d "$PROJECT_DIR/app" ]; then
             echo "::error::Android app directory missing."
             exit 1
-          }
+          fi
 
-          test -f "$PROJECT_DIR/build.gradle.kts" -o -f "$PROJECT_DIR/build.gradle" || {
+          if [ ! -f "$PROJECT_DIR/build.gradle" ] && [ ! -f "$PROJECT_DIR/build.gradle.kts" ]; then
             echo "::error::Root Gradle build file missing."
             exit 1
-          }
+          fi
 
-          test -f "$PROJECT_DIR/app/build.gradle.kts" -o -f "$PROJECT_DIR/app/build.gradle" || {
+          if [ ! -f "$PROJECT_DIR/app/build.gradle" ] && [ ! -f "$PROJECT_DIR/app/build.gradle.kts" ]; then
             echo "::error::App Gradle build file missing."
             exit 1
-          }
+          fi
 
           echo "project_dir=$PROJECT_DIR" >> "$GITHUB_OUTPUT"
+          echo "Validated Android project at: $PROJECT_DIR"
 
       - name: Build debug APK
         working-directory: ${{ steps.project.outputs.project_dir }}
